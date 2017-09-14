@@ -12,6 +12,7 @@ import {
   getLESSLanguageService,
   LanguageService,
 } from 'vscode-css-languageservice';
+import Uri from 'vscode-uri';
 import * as _ from 'lodash';
 import { css as cssBeautify } from 'js-beautify';
 import * as emmet from 'vscode-emmet-helper';
@@ -183,16 +184,17 @@ export function prettify(
   formatParams: FormattingOptions
 ): TextEdit[] {
   const { value, range } = getValueAndRange(document, currRange);
+  const docPath = getFileFsPath(document.uri);
   let newText = value;
 
   let fileOptions = {};
   try {
-    fileOptions = bundlePrettier.resolveConfig.sync(document.uri);
+    fileOptions = bundlePrettier.resolveConfig.sync(docPath);
   } catch (e) {
     console.error('prettier config resolving error', e);
   }
 
-  const prettier = requireLocalPkg(document.uri, 'prettier');
+  const prettier = requireLocalPkg(docPath, 'prettier');
   try {
     newText =
       '\n' + prettier.format(value, { parser: 'postcss', ...fileOptions });
@@ -255,4 +257,8 @@ function getValueAndRange(
     );
   }
   return { value, range };
+}
+
+function getFileFsPath(documentUri: string): string {
+  return Uri.parse(documentUri).fsPath;
 }
