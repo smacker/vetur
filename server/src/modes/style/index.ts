@@ -4,40 +4,54 @@ import {
   TextEdit,
   FormattingOptions,
   Range,
-  CompletionList
+  CompletionList,
 } from 'vscode-languageserver-types';
 import {
   getCSSLanguageService,
   getSCSSLanguageService,
   getLESSLanguageService,
-  LanguageService
+  LanguageService,
 } from 'vscode-css-languageservice';
 import * as _ from 'lodash';
 import { css as cssBeautify } from 'js-beautify';
 import * as emmet from 'vscode-emmet-helper';
 
 import { Priority } from './emmet';
-import { LanguageModelCache, getLanguageModelCache } from '../languageModelCache';
+import {
+  LanguageModelCache,
+  getLanguageModelCache,
+} from '../languageModelCache';
 import { LanguageMode } from '../languageModes';
 import { VueDocumentRegions } from '../embeddedSupport';
 import { defaultCssOptions } from './defaultOption';
 import { wrapSection } from '../../utils/strings';
+import { requireLocalPkg } from '../../utils/requirePkg';
 
-export function getCSSMode(documentRegions: LanguageModelCache<VueDocumentRegions>): LanguageMode {
+const bundlePrettier = require('prettier');
+
+export function getCSSMode(
+  documentRegions: LanguageModelCache<VueDocumentRegions>
+): LanguageMode {
   const languageService = getCSSLanguageService();
   return getStyleMode('css', languageService, documentRegions);
 }
 
-export function getPostCSSMode(documentRegions: LanguageModelCache<VueDocumentRegions>): LanguageMode {
+export function getPostCSSMode(
+  documentRegions: LanguageModelCache<VueDocumentRegions>
+): LanguageMode {
   const languageService = getCSSLanguageService();
   return getStyleMode('postcss', languageService, documentRegions);
 }
 
-export function getSCSSMode(documentRegions: LanguageModelCache<VueDocumentRegions>): LanguageMode {
+export function getSCSSMode(
+  documentRegions: LanguageModelCache<VueDocumentRegions>
+): LanguageMode {
   const languageService = getSCSSLanguageService();
   return getStyleMode('scss', languageService, documentRegions);
 }
-export function getLESSMode(documentRegions: LanguageModelCache<VueDocumentRegions>): LanguageMode {
+export function getLESSMode(
+  documentRegions: LanguageModelCache<VueDocumentRegions>
+): LanguageMode {
   const languageService = getLESSLanguageService();
   return getStyleMode('less', languageService, documentRegions);
 }
@@ -50,7 +64,9 @@ function getStyleMode(
   const embeddedDocuments = getLanguageModelCache(10, 60, document =>
     documentRegions.get(document).getEmbeddedDocument(languageId)
   );
-  const stylesheets = getLanguageModelCache(10, 60, document => languageService.parseStylesheet(document));
+  const stylesheets = getLanguageModelCache(10, 60, document =>
+    languageService.parseStylesheet(document)
+  );
 
   return {
     getId() {
@@ -66,57 +82,89 @@ function getStyleMode(
     doComplete(document, position) {
       const embedded = embeddedDocuments.get(document);
       const emmetSyntax = languageId === 'postcss' ? 'css' : languageId;
-      const emmetCompletions: CompletionList = emmet.doComplete(document, position, emmetSyntax, {
-        useNewEmmet: true,
-        showExpandedAbbreviation: true,
-        showAbbreviationSuggestions: true,
-        syntaxProfiles: {},
-        variables: {}
-      });
+      const emmetCompletions: CompletionList = emmet.doComplete(
+        document,
+        position,
+        emmetSyntax,
+        {
+          useNewEmmet: true,
+          showExpandedAbbreviation: true,
+          showAbbreviationSuggestions: true,
+          syntaxProfiles: {},
+          variables: {},
+        }
+      );
       const emmetItems = _.map(emmetCompletions.items, i => {
         return {
           ...i,
-          sortText: Priority.Emmet + i.label
+          sortText: Priority.Emmet + i.label,
         };
       });
-      const lsCompletions = languageService.doComplete(embedded, position, stylesheets.get(embedded));
+      const lsCompletions = languageService.doComplete(
+        embedded,
+        position,
+        stylesheets.get(embedded)
+      );
       const lsItems = _.map(lsCompletions.items, i => {
         return {
           ...i,
-          sortText: Priority.Platform + i.label
+          sortText: Priority.Platform + i.label,
         };
       });
       return {
         isIncomplete: true,
-        items: _.concat(emmetItems, lsItems)
+        items: _.concat(emmetItems, lsItems),
       };
     },
     doHover(document, position) {
       const embedded = embeddedDocuments.get(document);
-      return languageService.doHover(embedded, position, stylesheets.get(embedded));
+      return languageService.doHover(
+        embedded,
+        position,
+        stylesheets.get(embedded)
+      );
     },
     findDocumentHighlight(document, position) {
       const embedded = embeddedDocuments.get(document);
-      return languageService.findDocumentHighlights(embedded, position, stylesheets.get(embedded));
+      return languageService.findDocumentHighlights(
+        embedded,
+        position,
+        stylesheets.get(embedded)
+      );
     },
     findDocumentSymbols(document) {
       const embedded = embeddedDocuments.get(document);
-      return languageService.findDocumentSymbols(embedded, stylesheets.get(embedded));
+      return languageService.findDocumentSymbols(
+        embedded,
+        stylesheets.get(embedded)
+      );
     },
     findDefinition(document, position) {
       const embedded = embeddedDocuments.get(document);
-      return languageService.findDefinition(embedded, position, stylesheets.get(embedded));
+      return languageService.findDefinition(
+        embedded,
+        position,
+        stylesheets.get(embedded)
+      );
     },
     findReferences(document, position) {
       const embedded = embeddedDocuments.get(document);
-      return languageService.findReferences(embedded, position, stylesheets.get(embedded));
+      return languageService.findReferences(
+        embedded,
+        position,
+        stylesheets.get(embedded)
+      );
     },
     findColorSymbols(document) {
       const embedded = embeddedDocuments.get(document);
-      return languageService.findColorSymbols(embedded, stylesheets.get(embedded));
+      return languageService.findColorSymbols(
+        embedded,
+        stylesheets.get(embedded)
+      );
     },
     format(document, range, formattingOptions) {
-      return cssFormat(document, range, formattingOptions);
+      // FIXME need some config variable to choose between cssFormat & prettify
+      return prettify(document, range, formattingOptions);
     },
     onDocumentRemoved(document) {
       embeddedDocuments.onDocumentRemoved(document);
@@ -125,11 +173,47 @@ function getStyleMode(
     dispose() {
       embeddedDocuments.dispose();
       stylesheets.dispose();
-    }
+    },
   };
 }
 
-export function cssFormat(document: TextDocument, currRange: Range, formattingOptions: FormattingOptions): TextEdit[] {
+export function prettify(
+  document: TextDocument,
+  currRange: Range,
+  formatParams: FormattingOptions
+): TextEdit[] {
+  const { value, range } = getValueAndRange(document, currRange);
+  let newText = value;
+
+  let fileOptions = {};
+  try {
+    fileOptions = bundlePrettier.resolveConfig.sync(document.uri);
+  } catch (e) {
+    console.error('prettier config resolving error', e);
+  }
+
+  const prettier = requireLocalPkg(document.uri, 'prettier');
+  try {
+    newText =
+      '\n' + prettier.format(value, { parser: 'postcss', ...fileOptions });
+  } catch (e) {
+    newText = value;
+    console.error('prettier format error:', e);
+  }
+
+  return [
+    {
+      range,
+      newText,
+    },
+  ];
+}
+
+export function cssFormat(
+  document: TextDocument,
+  currRange: Range,
+  formattingOptions: FormattingOptions
+): TextEdit[] {
   const { value, range } = getValueAndRange(document, currRange);
 
   defaultCssOptions.indent_with_tabs = !formattingOptions.insertSpaces;
@@ -146,12 +230,15 @@ export function cssFormat(document: TextDocument, currRange: Range, formattingOp
   return [
     {
       range,
-      newText: wrappedCss
-    }
+      newText: wrappedCss,
+    },
   ];
 }
 
-function getValueAndRange(document: TextDocument, currRange: Range): { value: string; range: Range } {
+function getValueAndRange(
+  document: TextDocument,
+  currRange: Range
+): { value: string; range: Range } {
   let value = document.getText();
   let range = currRange;
 
@@ -162,7 +249,10 @@ function getValueAndRange(document: TextDocument, currRange: Range): { value: st
     includesEnd = endOffset === value.length;
     value = value.substring(startOffset, endOffset);
   } else {
-    range = Range.create(Position.create(0, 0), document.positionAt(value.length));
+    range = Range.create(
+      Position.create(0, 0),
+      document.positionAt(value.length)
+    );
   }
   return { value, range };
 }
